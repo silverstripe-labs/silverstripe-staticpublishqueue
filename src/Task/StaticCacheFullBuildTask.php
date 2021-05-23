@@ -8,6 +8,7 @@ use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Dev\BuildTask;
 use SilverStripe\ORM\DataList;
 use SilverStripe\ORM\FieldType\DBDatetime;
+use SilverStripe\ORM\ValidationException;
 use SilverStripe\StaticPublishQueue\Job\StaticCacheFullBuildJob;
 use Symbiote\QueuedJobs\DataObjects\QueuedJobDescriptor;
 use Symbiote\QueuedJobs\Services\QueuedJob;
@@ -15,12 +16,14 @@ use Symbiote\QueuedJobs\Services\QueuedJobService;
 
 class StaticCacheFullBuildTask extends BuildTask
 {
+
     /**
      * Queue up a StaticCacheFullBuildJob
      * Check for startAfter param and do some sanity checking
      *
      * @param HTTPRequest $request
      * @return bool
+     * @throws ValidationException
      */
     public function run($request)
     {
@@ -36,6 +39,7 @@ class StaticCacheFullBuildTask extends BuildTask
             ],
         ];
 
+        /** @var QueuedJobDescriptor $existing */
         $existing = DataList::create(QueuedJobDescriptor::class)->filter($filter)->first();
 
         if ($existing && $existing->exists()) {
