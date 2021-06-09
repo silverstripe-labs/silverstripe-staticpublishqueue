@@ -8,6 +8,8 @@ SilverStripe\Core\Injector\Injector:
     properties:
       States:
         staticPublisherState: '%$SilverStripe\StaticPublishQueue\Dev\StaticPublisherState'
+  SilverStripe\StaticPublishQueue\Service\UrlBundleInterface:
+    class: SilverStripe\StaticPublishQueue\Service\UrlBundleService
 SilverStripe\CMS\Model\SiteTree:
   extensions:
     - SilverStripe\StaticPublishQueue\Extension\Engine\SiteTreePublishingEngine

@@ -42,6 +42,45 @@ abstract class Job extends AbstractQueuedJob
     private static $chunk_size = 200;
 
     /**
+     * Number of URLs per job allows you to split work into multiple smaller jobs instead of having one large job
+     * this is useful if you're running a queue setup will parallel processing or if you have too many URLs in general
+     * if this number is too high you're limiting the parallel processing opportunity
+     * if this number is too low you're using your resources inefficiently
+     * as every job processing has a fixed overhead which adds up if there are too many jobs
+     *
+     * in case you project is complex and you are struggling to find the correct number
+     * it's possible to move this value to a CMS setting and adjust as needed without the need of changing the code
+     * use @see Job::getUrlsPerJob() to override the value lookup
+     * you can subclass your jobs and implement your own getUrlsPerJob() method which will look into CMS setting
+     *
+     * batching capability can be disabled if urls per job is set to 0
+     * in such case, all URLs will be put into one job
+     *
+     * @var int
+     * @config
+     */
+    private static $urls_per_job = 0;
+
+    /**
+     * Use this method to populate newly created job with data
+     *
+     * @param array $urls
+     * @param string|null $message
+     */
+    public function hydrate(array $urls, ?string $message): void
+    {
+        $this->URLsToProcess = $urls;
+
+        if (!$message) {
+            return;
+        }
+
+        $this->messages = [
+            sprintf('%s: %s', $message, var_export(array_keys($urls), true)),
+        ];
+    }
+
+    /**
      * Static cache manipulation jobs need to run without a user
      * this is because we don't want any session related data to become part of URLs
      * For example stage GET param is injected into URLs when user is logged in
@@ -84,6 +123,16 @@ abstract class Job extends AbstractQueuedJob
         }
 
         $this->updateCompletedState();
+    }
+
+    /**
+     * @return int
+     */
+    public function getUrlsPerJob(): int
+    {
+        $urlsPerJob = (int) $this->config()->get('urls_per_job');
+
+        return ($urlsPerJob > 0) ? $urlsPerJob : 0;
     }
 
     /**

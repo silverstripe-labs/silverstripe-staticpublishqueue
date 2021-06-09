@@ -2,14 +2,17 @@
 
 namespace SilverStripe\StaticPublishQueue\Extension\Engine;
 
+use SilverStripe\CMS\Model\SiteTree;
 use SilverStripe\CMS\Model\SiteTreeExtension;
 use SilverStripe\Core\Environment;
 use SilverStripe\Core\Injector\Injector;
 use SilverStripe\Core\Resettable;
+use SilverStripe\ORM\ValidationException;
 use SilverStripe\StaticPublishQueue\Contract\StaticPublishingTrigger;
 use SilverStripe\StaticPublishQueue\Extension\Publishable\PublishableSiteTree;
 use SilverStripe\StaticPublishQueue\Job\DeleteStaticCacheJob;
 use SilverStripe\StaticPublishQueue\Job\GenerateStaticCacheJob;
+use SilverStripe\StaticPublishQueue\Service\UrlBundleInterface;
 use Symbiote\QueuedJobs\Services\QueuedJobService;
 
 /**
@@ -99,15 +102,16 @@ class SiteTreePublishingEngine extends SiteTreeExtension implements Resettable
     }
 
     /**
-     * @param \SilverStripe\CMS\Model\SiteTree|null $original
+     * @param SiteTree|SiteTreePublishingEngine|null $original
+     * @throws ValidationException
      */
     public function onAfterPublishRecursive(&$original)
     {
-        // if the site tree has been "reorganised" (ie: the parentID has changed)
-        // then this is eht equivalent of an unpublish and publish as far as the
+        // If the site tree has been "reorganised" (ie: the parentID has changed)
+        // then this is the equivalent of an un-publish and publish as far as the
         // static publisher is concerned
         if ($original && (
-                $original->ParentID !== $this->getOwner()->ParentID
+            (int) $original->ParentID !== (int) $this->getOwner()->ParentID
                 || $original->URLSegment !== $this->getOwner()->URLSegment
             )
         ) {
@@ -132,6 +136,9 @@ class SiteTreePublishingEngine extends SiteTreeExtension implements Resettable
         $this->collectChanges($context);
     }
 
+    /**
+     * @throws ValidationException
+     */
     public function onAfterUnpublish()
     {
         $this->flushChanges();
@@ -160,44 +167,49 @@ class SiteTreePublishingEngine extends SiteTreeExtension implements Resettable
 
     /**
      * Execute URL deletions, enqueue URL updates.
+     * @throws ValidationException
      */
     public function flushChanges()
     {
-        $queue = static::$queueService ?? QueuedJobService::singleton();
+        $queueService = static::$queueService ?? QueuedJobService::singleton();
 
-        if (!empty($this->toUpdate)) {
-            foreach ($this->toUpdate as $queueItem) {
-                $job = Injector::inst()->create(GenerateStaticCacheJob::class);
+        if (count($this->toUpdate) > 0) {
+            /** @var UrlBundleInterface $urlService */
+            $urlService = Injector::inst()->create(UrlBundleInterface::class);
 
-                $jobData = new \stdClass();
-                $urls = $queueItem->urlsToCache();
+            foreach ($this->toUpdate as $item) {
+                $urls = $item->urlsToCache();
                 ksort($urls);
-                $jobData->URLsToProcess = $urls;
-
-                $job->setJobData(0, 0, false, $jobData, [
-                    'Building URLs: ' . var_export(array_keys($jobData->URLsToProcess), true),
-                ]);
-
-                $queue->queueJob($job);
+                $urls = array_keys($urls);
+                $urlService->addUrls($urls);
             }
+
+            $jobs = $urlService->getJobsForUrls(GenerateStaticCacheJob::class, 'Building URLs', $this->owner);
+
+            foreach ($jobs as $job) {
+                $queueService->queueJob($job);
+            }
+
             $this->toUpdate = [];
         }
 
-        if (!empty($this->toDelete)) {
-            foreach ($this->toDelete as $queueItem) {
-                $job = Injector::inst()->create(DeleteStaticCacheJob::class);
+        if (count($this->toDelete) > 0) {
+            /** @var UrlBundleInterface $urlService */
+            $urlService = Injector::inst()->create(UrlBundleInterface::class);
 
-                $jobData = new \stdClass();
-                $urls = $queueItem->urlsToCache();
+            foreach ($this->toDelete as $item) {
+                $urls = $item->urlsToCache();
                 ksort($urls);
-                $jobData->URLsToProcess = $urls;
-
-                $job->setJobData(0, 0, false, $jobData, [
-                    'Purging URLs: ' . var_export(array_keys($jobData->URLsToProcess), true),
-                ]);
-
-                $queue->queueJob($job);
+                $urls = array_keys($urls);
+                $urlService->addUrls($urls);
             }
+
+            $jobs = $urlService->getJobsForUrls(DeleteStaticCacheJob::class, 'Purging URLs', $this->owner);
+
+            foreach ($jobs as $job) {
+                $queueService->queueJob($job);
+            }
+
             $this->toDelete = [];
         }
     }
