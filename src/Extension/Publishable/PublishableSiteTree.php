@@ -3,6 +3,7 @@
 namespace SilverStripe\StaticPublishQueue\Extension\Publishable;
 
 use SilverStripe\CMS\Model\VirtualPage;
+use SilverStripe\Control\Controller;
 use SilverStripe\Control\Director;
 use SilverStripe\ORM\DataExtension;
 use SilverStripe\StaticPublishQueue\Contract\StaticallyPublishable;
@@ -87,9 +88,13 @@ class PublishableSiteTree extends DataExtension implements StaticallyPublishable
 
     /**
      * The only URL belonging to this object is it's own URL.
+     * Instead of Link() which calls VersionedStateExtension::updateLink and appends stage=Live
      */
     public function urlsToCache()
     {
-        return [Director::absoluteURL($this->getOwner()->Link()) => 0];
+        $relativeLink = $this->getOwner()->RelativeLink();
+        $link =  Controller::join_links(Director::baseURL(), $relativeLink);
+
+        return [Director::absoluteURL($link) => 0];
     }
 }
